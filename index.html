@@ -1,211 +1,92 @@
 <!DOCTYPE html>
 <html lang="ko">
-
 <head>
 <meta charset="UTF-8">
 <title>Voice Sensor</title>
+<style>
+body{background:#111827;color:white;font-family:sans-serif;text-align:center;padding-top:100px}
+#db{font-size:80px;font-weight:bold;color:#22c55e}
+#status{color:#cbd5e1}
+</style>
 </head>
 
-
 <body>
-
+<h1>🎤 Voice Sensor</h1>
+<h2 id="player"></h2>
+<div id="db">-- dB</div>
+<div id="status">마이크 권한 요청 중...</div>
 
 <script>
+const params=new URLSearchParams(location.search);
+const playerName=params.get("player")||"unknown";
 
-// =========================
-// 플레이어 이름
-// =========================
+document.getElementById("player").textContent=playerName;
 
-const params = new URLSearchParams(location.search);
+const ws=new WebSocket("ws://localhost:3000");
 
-const playerName =
-    params.get("player") || "unknown";
-
-
-
-// =========================
-// WebSocket 서버
-// =========================
-
-// 테스트용
-const ws = new WebSocket(
-    "ws://localhost:3000"
-);
-
-
-ws.onopen = () => {
+ws.onopen=()=>{
     console.log("VoiceServer 연결 성공");
 };
 
-
-ws.onerror = (e) => {
-    console.log("WebSocket 오류", e);
+ws.onerror=(e)=>{
+    console.log("WebSocket 오류",e);
 };
-
-
-ws.onclose = () => {
-    console.log("VoiceServer 연결 종료");
-};
-
-
-
-
-// =========================
-// 마이크 시작
-// =========================
 
 async function startMicrophone(){
-
-
-    const stream =
-        await navigator.mediaDevices.getUserMedia({
+    try{
+        const stream=await navigator.mediaDevices.getUserMedia({
             audio:true
         });
 
+        document.getElementById("status").textContent="마이크 연결 완료";
 
+        const audioContext=new AudioContext();
+        const analyser=audioContext.createAnalyser();
+        analyser.fftSize=2048;
 
-    const audioContext =
-        new AudioContext();
+        const source=audioContext.createMediaStreamSource(stream);
+        source.connect(analyser);
 
+        const data=new Uint8Array(analyser.fftSize);
 
+        setInterval(()=>{
+            analyser.getByteTimeDomainData(data);
 
-    const analyser =
-        audioContext.createAnalyser();
+            let sum=0;
 
+            for(let i=0;i<data.length;i++){
+                const value=(data[i]-128)/128;
+                sum+=value*value;
+            }
 
-    analyser.fftSize = 2048;
+            const rms=Math.sqrt(sum/data.length);
 
+            let dbfs=20*Math.log10(rms);
+            if(!isFinite(dbfs)) dbfs=-80;
 
+            let gameDb=dbfs+100;
+            gameDb=Math.max(0,Math.min(100,gameDb));
+            gameDb=Number(gameDb.toFixed(1));
 
-    const source =
-        audioContext.createMediaStreamSource(stream);
+            document.getElementById("db").textContent=gameDb+" dB";
 
+            if(ws.readyState===WebSocket.OPEN){
+                ws.send(JSON.stringify({
+                    player:playerName,
+                    db:gameDb
+                }));
+            }
 
+        },100);
 
-    source.connect(analyser);
-
-
-
-    const data =
-        new Uint8Array(analyser.fftSize);
-
-
-
-
-
-    // 0.1초마다 측정
-
-    setInterval(()=>{
-
-
-        analyser.getByteTimeDomainData(data);
-
-
-
-        let sum = 0;
-
-
-
-        for(let i = 0; i < data.length; i++){
-
-
-            const value =
-                (data[i] - 128) / 128;
-
-
-            sum += value * value;
-
-        }
-
-
-
-        const rms =
-            Math.sqrt(sum / data.length);
-
-
-
-        // dBFS 계산
-
-        let dbfs =
-            20 * Math.log10(rms);
-
-
-
-        if(!isFinite(dbfs)){
-            dbfs = -80;
-        }
-
-
-
-        /*
-            게임용 dB 변환
-
-            -80 dBFS → 20
-            -60 dBFS → 40
-            -40 dBFS → 60
-            -20 dBFS → 80
-              0 dBFS → 100
-        */
-
-
-        let gameDb =
-            dbfs + 100;
-
-
-
-        // 0~100 제한
-
-        gameDb =
-            Math.max(
-                0,
-                Math.min(
-                    100,
-                    gameDb
-                )
-            );
-
-
-
-        gameDb =
-            Number(gameDb.toFixed(1));
-
-
-
-
-
-        // 서버 전송
-
-        if(ws.readyState === WebSocket.OPEN){
-
-
-            ws.send(JSON.stringify({
-
-                player: playerName,
-
-                db: gameDb
-
-            }));
-
-
-        }
-
-
-
-    },100);
-
-
+    }catch(err){
+        console.error(err);
+        document.getElementById("status").textContent=
+            "마이크 권한을 허용해주세요.\n오로지 마이크 데시벨 측정용도입니다.";
+    }
 }
 
-
-
-
-
 startMicrophone();
-
-
 </script>
-
-
 </body>
-
 </html>
