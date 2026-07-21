@@ -2,237 +2,126 @@
 <html lang="ko">
 <head>
 <meta charset="UTF-8">
-<title>Voice Sensor</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>VoiceDB</title>
 <style>
 body{
-    background:#111827;
-    color:white;
-    font-family:sans-serif;
-    text-align:center;
-    padding-top:100px;
+	margin:0;
+	background:#0f172a;
+	color:white;
+	font-family:sans-serif;
+	display:flex;
+	justify-content:center;
+	align-items:center;
+	min-height:100vh;
+}
+.card{
+	background:#111827;
+	padding:40px;
+	border-radius:20px;
+	text-align:center;
+	width:90%;
+	max-width:500px;
 }
 #db{
-    font-size:80px;
-    font-weight:bold;
-    color:#22c55e;
-}
-button{
-    padding:12px 25px;
-    font-size:18px;
-    cursor:pointer;
+	font-size:72px;
+	font-weight:bold;
+	color:#22c55e;
+	margin:20px 0;
 }
 #status{
-    color:#cbd5e1;
+	color:#cbd5e1;
 }
 </style>
 </head>
-
 <body>
-
-<h1>🎤 Voice Sensor</h1>
-
-<h2 id="player"></h2>
-
-<div id="notice">
-    <h3>마이크 권한 필요</h3>
-    <p>
-        오로지 마이크 데시벨 측정을 위한 용도입니다.<br>
-        음성 녹음 및 저장은 하지 않습니다.
-    </p>
-    <button id="startButton">마이크 허용</button>
-</div>
-
+<div class="card">
+<h1>🎤 VoiceDB</h1>
+<div id="player">플레이어: 로딩중...</div>
 <div id="db">-- dB</div>
-
-<div id="status">
-    대기 중
+<div id="status">마이크 권한을 요청하는 중...</div>
 </div>
-
 
 <script>
+const SERVER_URL="ws://localhost:3000";
 
-const params = new URLSearchParams(location.search);
+const params=new URLSearchParams(location.search);
+const playerName=params.get("player")||"unknown";
 
-const playerName = params.get("player") || "unknown";
+document.getElementById("player").textContent="플레이어: "+playerName;
 
-document.getElementById("player").textContent =
-    "Player : " + playerName;
+let socket=new WebSocket(SERVER_URL);
 
-
-
-const ws = new WebSocket(
-    "ws://211.222.216.108:3000"
-);
-
-
-ws.onopen = () => {
-    console.log("VoiceServer 연결 성공");
+socket.onopen=()=>{
+	document.getElementById("status").textContent="서버 연결 완료";
+	console.log("WebSocket 연결 성공");
 };
 
-
-ws.onerror = (e) => {
-    console.error("WebSocket 오류", e);
+socket.onerror=(e)=>{
+	document.getElementById("status").textContent="서버 연결 실패";
+	console.error("WebSocket 오류",e);
 };
 
-
-
-document.getElementById("startButton")
-.addEventListener("click", startMicrophone);
-
-
+socket.onclose=()=>{
+	console.log("WebSocket 종료");
+};
 
 async function startMicrophone(){
+	try{
+		const stream=await navigator.mediaDevices.getUserMedia({
+			audio:true
+		});
 
-    const status =
-        document.getElementById("status");
+		document.getElementById("status").textContent="마이크 연결 완료";
 
+		const audioContext=new AudioContext();
+		const analyser=audioContext.createAnalyser();
 
-    try{
+		analyser.fftSize=2048;
 
-        status.textContent =
-            "마이크 권한 요청 중...";
+		const source=audioContext.createMediaStreamSource(stream);
+		source.connect(analyser);
 
+		const data=new Uint8Array(analyser.fftSize);
 
-        const stream =
-            await navigator.mediaDevices.getUserMedia({
-                audio:{
-                    echoCancellation:false,
-                    noiseSuppression:false,
-                    autoGainControl:false
-                }
-            });
+		setInterval(()=>{
+			analyser.getByteTimeDomainData(data);
 
+			let sum=0;
 
-        document.getElementById("notice")
-            .style.display="none";
+			for(let i=0;i<data.length;i++){
+				const value=(data[i]-128)/128;
+				sum+=value*value;
+			}
 
+			const rms=Math.sqrt(sum/data.length);
 
-        status.textContent =
-            "마이크 연결 완료";
+			let db=20*Math.log10(rms);
 
+			if(!isFinite(db)){
+				db=-80;
+			}
 
+			db=Number(db.toFixed(1));
 
-        const audioContext =
-            new AudioContext();
+			document.getElementById("db").textContent=db+" dB";
 
+			if(socket.readyState===WebSocket.OPEN){
+				socket.send(JSON.stringify({
+					player:playerName,
+					db:db
+				}));
+			}
 
-        const analyser =
-            audioContext.createAnalyser();
+		},100);
 
-
-        analyser.fftSize = 2048;
-
-
-        const source =
-            audioContext.createMediaStreamSource(stream);
-
-
-        source.connect(analyser);
-
-
-        const data =
-            new Uint8Array(analyser.fftSize);
-
-
-
-        setInterval(()=>{
-
-
-            analyser.getByteTimeDomainData(data);
-
-
-
-            let sum = 0;
-
-
-            for(let i=0;i<data.length;i++){
-
-                const value =
-                    (data[i]-128)/128;
-
-                sum += value*value;
-
-            }
-
-
-
-            const rms =
-                Math.sqrt(sum/data.length);
-
-
-
-            let dbfs =
-                20*Math.log10(rms);
-
-
-
-            if(!isFinite(dbfs)){
-                dbfs=-80;
-            }
-
-
-
-            let gameDb =
-                dbfs + 100;
-
-
-
-            gameDb =
-                Math.max(
-                    0,
-                    Math.min(
-                        100,
-                        gameDb
-                    )
-                );
-
-
-
-            gameDb =
-                Number(gameDb.toFixed(1));
-
-
-
-            document.getElementById("db")
-                .textContent =
-                gameDb+" dB";
-
-
-
-            if(ws.readyState === WebSocket.OPEN){
-
-                ws.send(JSON.stringify({
-
-                    player:playerName,
-
-                    db:gameDb
-
-                }));
-
-            }
-
-
-
-        },100);
-
-
-
-    }catch(err){
-
-        console.error(
-            "마이크 오류:",
-            err
-        );
-
-
-        status.textContent =
-            "마이크 권한을 허용해주세요.";
-
-    }
-
+	}catch(err){
+		console.error(err);
+		document.getElementById("status").textContent="마이크 권한을 허용해주세요.";
+	}
 }
 
+startMicrophone();
 </script>
-
 </body>
 </html>
