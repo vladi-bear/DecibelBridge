@@ -56,6 +56,7 @@ body {
 }
 </style>
 </head>
+
 <body>
 
 <div class="card">
@@ -92,120 +93,178 @@ const statusElement = document.getElementById("status");
 const startButton = document.getElementById("startButton");
 const noticeElement = document.getElementById("notice");
 
-playerElement.textContent = "플레이어 : [" + playerName" + "]";
+let socket = null;
 
-const socket = new WebSocket(SERVER_URL);
-
-socket.onopen = () => {
-    statusElement.textContent = "서버 연결 완료";
-    console.log("DecibelBridge WebSocket 연결 성공");
-};
-
-socket.onerror = (error) => {
-    statusElement.textContent = "서버 연결 실패";
-    console.error("WebSocket 오류", error);
-};
-
-socket.onclose = () => {
-    console.log("DecibelBridge WebSocket 종료");
-};
+playerElement.textContent = "플레이어 : [" + playerName + "]";
 
 async function startMicrophone() {
+
     try {
+
+        socket = new WebSocket(SERVER_URL);
+
+        socket.onopen = () => {
+            console.log("DecibelBridge WebSocket 연결 성공");
+            statusElement.textContent = "서버 연결 완료";
+        };
+
+        socket.onerror = (error) => {
+            console.error("WebSocket 오류", error);
+        };
+
+        socket.onclose = () => {
+            console.log("DecibelBridge WebSocket 종료");
+        };
+
+
         const stream = await navigator.mediaDevices.getUserMedia({
             audio: true
         });
 
-        statusElement.textContent = "마이크 연결 완료";
+
+        statusElement.textContent =
+            "마이크 연결 완료";
+
 
         startButton.style.display = "none";
         noticeElement.style.display = "none";
+
 
         const audioContext = new AudioContext();
         const analyser = audioContext.createAnalyser();
 
         analyser.fftSize = 2048;
 
+
         const source = audioContext.createMediaStreamSource(stream);
         source.connect(analyser);
+
 
         const data = new Uint8Array(analyser.fftSize);
         const dbHistory = [];
 
+
         setInterval(() => {
+
             analyser.getByteTimeDomainData(data);
+
 
             let sum = 0;
 
+
             for (let i = 0; i < data.length; i++) {
+
                 const value = (data[i] - 128) / 128;
                 sum += value * value;
+
             }
+
 
             let db = 20 * Math.log10(
                 Math.sqrt(sum / data.length)
             );
 
+
             if (!Number.isFinite(db)) {
+
                 db = -80;
+
             }
+
 
             let gameDb = (db + 80) * 1.25;
 
+
             if (gameDb < NOISE_GATE) {
+
                 gameDb = 0;
+
             } else {
+
                 gameDb =
                     ((gameDb - NOISE_GATE) /
                     (100 - NOISE_GATE)) * 100;
+
             }
+
 
             gameDb = Math.max(0, Math.min(100, gameDb));
 
+
             dbHistory.push(gameDb);
 
+
             if (dbHistory.length > 5) {
+
                 dbHistory.shift();
+
             }
+
 
             let averageDb = 0;
 
+
             for (const value of dbHistory) {
+
                 averageDb += value;
+
             }
+
 
             averageDb /= dbHistory.length;
 
+
             const displayDb = averageDb.toFixed(1);
 
-            dbElement.textContent = displayDb + "dB";
+
+            dbElement.textContent =
+                displayDb + "dB";
+
 
             if (averageDb < 30) {
+
                 dbElement.style.color = "#22c55e";
+
             } else if (averageDb < 60) {
+
                 dbElement.style.color = "#eab308";
+
             } else if (averageDb < 80) {
+
                 dbElement.style.color = "#f97316";
+
             } else {
+
                 dbElement.style.color = "#ef4444";
+
             }
 
-            if (socket.readyState === WebSocket.OPEN) {
+
+            if (socket != null &&
+                socket.readyState === WebSocket.OPEN) {
+
                 socket.send(JSON.stringify({
                     player: playerName,
                     db: Number(displayDb)
                 }));
+
             }
+
 
         }, 100);
 
+
     } catch (error) {
+
         console.error(error);
 
         statusElement.textContent =
             "마이크 권한이 필요합니다.";
+
     }
+
 }
+
 
 startButton.addEventListener("click", () => {
     startMicrophone();
