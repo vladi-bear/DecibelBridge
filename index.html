@@ -3,80 +3,142 @@
 <html lang="ko">
 <head>
 <meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>VoiceDB</title>
+
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+
 <style>
-body{background:#111;color:white;font-family:sans-serif;text-align:center;margin-top:100px}
-#db{font-size:72px;color:#00ff88}
+body{
+  margin:0;
+  background:#0f172a;
+  color:white;
+  font-family:sans-serif;
+  display:flex;
+  justify-content:center;
+  align-items:center;
+  min-height:100vh;
+}
+.card{
+  background:#111827;
+  padding:40px;
+  border-radius:20px;
+  text-align:center;
+  width:90%;
+  max-width:500px;
+}
+#db{
+  font-size:72px;
+  font-weight:bold;
+  color:#22c55e;
+  margin:20px 0;
+}
+#status{
+  color:#cbd5e1;
+}
 </style>
+
 </head>
 <body>
 
-<h1>🎤 VoiceDB</h1>
-<div id="player"></div>
-<div id="db">-- dB</div>
+<div class="card">
+  <h1>🎤 VoiceDB</h1>
+
+  <div id="player">플레이어: 로딩중...</div>
+
+  <div id="db">-- dB</div>
+
+  <div id="status">마이크 권한을 요청하는 중...</div>
+</div>
 
 <script>
+// 플레이어 이름 읽기
 const params = new URLSearchParams(location.search);
-const player = params.get('player') || 'unknown';
+const playerName = params.get('player') || 'unknown';
 
 document.getElementById('player').textContent =
-  '플레이어: ' + player;
+  '플레이어: ' + playerName;
 
-// 여기엔 supabase 변수를 선언하지 않는다
-const client = window.supabase.createClient(
+// Supabase 클라이언트 생성
+const sbClient = window.supabase.createClient(
   'https://uwzerhiqdaqhtncyghoy.supabase.co',
   'sb_publishable_jxfgCwlcynf35U1bkIxipw_Kxayi39_'
 );
 
-async function start() {
+// 마이크 시작
+async function startMicrophone() {
 
-  const stream = await navigator.mediaDevices.getUserMedia({
-    audio: true
-  });
+  try {
 
-  const ctx = new AudioContext();
-  const analyser = ctx.createAnalyser();
-  analyser.fftSize = 2048;
+    const stream = await navigator.mediaDevices.getUserMedia({
+      audio: true
+    });
 
-  const source = ctx.createMediaStreamSource(stream);
-  source.connect(analyser);
+    document.getElementById('status').textContent =
+      '마이크 연결 완료';
 
-  const data = new Uint8Array(analyser.fftSize);
+    const audioContext = new AudioContext();
+    const analyser = audioContext.createAnalyser();
 
-  setInterval(async () => {
+    analyser.fftSize = 2048;
 
-    analyser.getByteTimeDomainData(data);
+    const source =
+      audioContext.createMediaStreamSource(stream);
 
-    let sum = 0;
+    source.connect(analyser);
 
-    for (let i = 0; i < data.length; i++) {
-      const v = (data[i] - 128) / 128;
-      sum += v * v;
-    }
+    const data = new Uint8Array(analyser.fftSize);
 
-    const rms = Math.sqrt(sum / data.length);
+    // 100ms마다 측정
+    setInterval(async () => {
 
-    let db = 20 * Math.log10(rms);
+      analyser.getByteTimeDomainData(data);
 
-    if (!isFinite(db)) db = -80;
+      let sum = 0;
 
-    db = Number(db.toFixed(1));
+      for (let i = 0; i < data.length; i++) {
+        const value = (data[i] - 128) / 128;
+        sum += value * value;
+      }
 
-    document.getElementById('db').textContent =
-      db + ' dB';
+      const rms = Math.sqrt(sum / data.length);
 
-    await client
-      .from('voiceInfo')
-      .insert({
-        name: player,
-        db: db
-      });
+      let db = 20 * Math.log10(rms);
 
-  }, 100);
+      if (!isFinite(db)) {
+        db = -80;
+      }
+
+      db = Number(db.toFixed(1));
+
+      // 화면 표시
+      document.getElementById('db').textContent =
+        db + ' dB';
+
+      // Supabase 저장
+      const { error } = await sbClient
+        .from('voiceInfo')
+        .insert({
+          name: playerName,
+          db: db
+        });
+
+      if (error) {
+        console.error('Supabase 오류:', error);
+      }
+
+    }, 100);
+
+  } catch (err) {
+
+    console.error(err);
+
+    document.getElementById('status').textContent =
+      '마이크 권한을 허용해주세요.';
+  }
 }
 
-start().catch(console.error);
+startMicrophone();
 </script>
 
 </body>
