@@ -2,166 +2,144 @@
 <html lang="ko">
 <head>
 <meta charset="UTF-8">
-<title>VoiceDB</title>
+<title>DecibelBridge</title>
 <style>
-body{
-	margin:0;
-	background-image:url("background.jpg");
-	background-size:cover;
-	background-position:center;
-	background-repeat:no-repeat;
-	color:white;
-	font-family:sans-serif;
-	display:flex;
-	justify-content:center;
-	align-items:center;
-	height:100vh;
+body {
+    margin: 0;
+    background-image: url("background.jpg");
+    background-size: cover;
+    background-position: center;
+    background-repeat: no-repeat;
+    color: white;
+    font-family: sans-serif;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    height: 100vh;
 }
-.card{
-	background:rgba(17,24,39,0.85);
-	padding:40px;
-	border-radius:20px;
-	text-align:center;
-	width:400px;
-	backdrop-filter:blur(5px);
+.card {
+    background: rgba(17,24,39,0.85);
+    padding: 40px;
+    border-radius: 20px;
+    text-align: center;
+    width: 400px;
+    backdrop-filter: blur(5px);
 }
-#db{
-	font-size:70px;
-	color:#22c55e;
-	font-weight:bold;
-	margin:20px;
+#db {
+    font-size: 70px;
+    color: #22c55e;
+    font-weight: bold;
+    margin: 20px;
 }
 </style>
 </head>
 <body>
 <div class="card">
-<h1>🎤 VoiceDB</h1>
-<div id="player"></div>
-<div id="db">0.0dB</div>
-<div id="status">마이크 권한 요청 중...</div>
+    <h1>🎤 DecibelBridge</h1>
+    <div id="player"></div>
+    <div id="db">0.0dB</div>
+    <div id="status">마이크 권한을 요청할게요. 절대 녹음하지 않고 dB(데시벨)만 측정합니다!</div>
 </div>
-
 <script>
-const SERVER_URL="wss://skins-reggae-consequences-requirements.trycloudflare.com";
+const SERVER_URL = "wss://skins-reggae-consequences-requirements.trycloudflare.com";
+const params = new URLSearchParams(location.search);
+const playerName = params.get("player") || "unknown";
 
-const CALIBRATION=0;
+document.getElementById("player").textContent = "플레이어: " + playerName;
 
-const params=new URLSearchParams(location.search);
-const playerName=params.get("player")||"unknown";
+const socket = new WebSocket(SERVER_URL);
 
-document.getElementById("player").textContent="플레이어: "+playerName;
-
-const socket=new WebSocket(SERVER_URL);
-
-socket.onopen=()=>{
-	document.getElementById("status").textContent="서버 연결 완료";
-	console.log("WebSocket 연결 성공");
+socket.onopen = () => {
+    document.getElementById("status").textContent = "서버 연결 완료";
+    console.log("DecibelBridge WebSocket 연결 성공");
 };
 
-socket.onerror=(e)=>{
-	document.getElementById("status").textContent="서버 연결 실패";
-	console.error("WebSocket 오류",e);
+socket.onerror = (error) => {
+    document.getElementById("status").textContent = "서버 연결 실패";
+    console.error("WebSocket 오류", error);
 };
 
-socket.onclose=()=>{
-	console.log("WebSocket 종료");
+socket.onclose = () => {
+    console.log("DecibelBridge 연결 종료");
 };
 
-async function startMicrophone(){
+async function startMicrophone() {
+    try {
+        const stream = await navigator.mediaDevices.getUserMedia({
+            audio: true
+        });
 
-	try{
+        document.getElementById("status").textContent = "마이크 연결 완료";
 
-		const stream=await navigator.mediaDevices.getUserMedia({
-			audio:true
-		});
+        const audioContext = new AudioContext();
+        const analyser = audioContext.createAnalyser();
 
-		document.getElementById("status").textContent="마이크 연결 완료";
+        analyser.fftSize = 2048;
 
-		const audioContext=new AudioContext();
-		const analyser=audioContext.createAnalyser();
+        const source = audioContext.createMediaStreamSource(stream);
+        source.connect(analyser);
 
-		analyser.fftSize=2048;
+        const data = new Uint8Array(analyser.fftSize);
+        const dbHistory = [];
 
-		const source=audioContext.createMediaStreamSource(stream);
-		source.connect(analyser);
+        setInterval(() => {
+            analyser.getByteTimeDomainData(data);
 
-		const data=new Uint8Array(analyser.fftSize);
+            let sum = 0;
 
-		let dbHistory=[];
+            for (let i = 0; i < data.length; i++) {
+                const value = (data[i] - 128) / 128;
+                sum += value * value;
+            }
 
-		setInterval(()=>{
+            let db = 20 * Math.log10(Math.sqrt(sum / data.length));
 
-			analyser.getByteTimeDomainData(data);
+            if (!Number.isFinite(db)) {
+                db = -80;
+            }
 
-			let sum=0;
+            let gameDb = (db + 80) * 1.25;
+            gameDb = Math.max(0, Math.min(100, gameDb));
 
-			for(let i=0;i<data.length;i++){
+            dbHistory.push(gameDb);
 
-				let value=(data[i]-128)/128;
-				sum+=value*value;
+            if (dbHistory.length > 5) {
+                dbHistory.shift();
+            }
 
-			}
+            let averageDb = 0;
 
-			let rms=Math.sqrt(sum/data.length);
+            for (const value of dbHistory) {
+                averageDb += value;
+            }
 
-			let db=20*Math.log10(rms);
+            averageDb /= dbHistory.length;
 
-			if(!isFinite(db)){
-				db=-80;
-			}
+            const displayDb = averageDb.toFixed(1);
 
-			db+=CALIBRATION;
+            document.getElementById("db").textContent = displayDb + "dB";
 
-			dbHistory.push(db);
+            if (averageDb < 30) {
+                document.getElementById("db").style.color = "#22c55e";
+            } else if (averageDb < 60) {
+                document.getElementById("db").style.color = "#eab308";
+            } else if (averageDb < 80) {
+                document.getElementById("db").style.color = "#f97316";
+            } else {
+                document.getElementById("db").style.color = "#ef4444";
+            }
 
-			if(dbHistory.length>10){
-				dbHistory.shift();
-			}
-
-			let averageDb=0;
-
-			for(let i=0;i<dbHistory.length;i++){
-				averageDb+=dbHistory[i];
-			}
-
-			averageDb/=dbHistory.length;
-
-			let displayDb=averageDb.toFixed(1);
-
-			document.getElementById("db").textContent=displayDb+"dB";
-
-			if(averageDb<48.1){
-				document.getElementById("db").style.color="#22c55e";
-			}
-			else if(averageDb<68.1){
-				document.getElementById("db").style.color="#eab308";
-			}
-			else if(averageDb<80.1){
-				document.getElementById("db").style.color="#f97316";
-			}
-			else{
-				document.getElementById("db").style.color="#ef4444";
-			}
-
-			if(socket.readyState===WebSocket.OPEN){
-
-				socket.send(JSON.stringify({
-					player:playerName,
-					db:Number(displayDb)
-				}));
-
-			}
-
-		},100);
-
-	}catch(e){
-
-		console.error(e);
-
-		document.getElementById("status").textContent="마이크 권한을 허용해주세요.";
-
-	}
-
+            if (socket.readyState === WebSocket.OPEN) {
+                socket.send(JSON.stringify({
+                    player: playerName,
+                    db: Number(displayDb)
+                }));
+            }
+        }, 100);
+    } catch (error) {
+        console.error(error);
+        document.getElementById("status").textContent = "마이크 권한을 허용해주세요.";
+    }
 }
 
 startMicrophone();
