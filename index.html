@@ -6,7 +6,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>VoiceDB</title>
 
-  <!-- Supabase JS -->
+  <!-- Supabase -->
 
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 
@@ -15,7 +15,7 @@
       margin: 0;
       background: #0f172a;
       color: white;
-      font-family: 'Segoe UI', sans-serif;
+      font-family: sans-serif;
       display: flex;
       justify-content: center;
       align-items: center;
@@ -26,34 +26,16 @@
       background: #111827;
       padding: 40px;
       border-radius: 20px;
+      text-align: center;
       width: 90%;
       max-width: 500px;
-      text-align: center;
-      box-shadow: 0 10px 30px rgba(0,0,0,0.4);
-    }
-
-    h1 {
-      margin-top: 0;
-      color: #22c55e;
-    }
-
-    #player {
-      color: #93c5fd;
-      margin-bottom: 20px;
-      font-size: 18px;
     }
 
     #db {
       font-size: 72px;
       font-weight: bold;
-      color: #22c55e;
       margin: 20px 0;
-    }
-
-    #status {
-      margin-top: 20px;
-      font-size: 14px;
-      color: #f59e0b;
+      color: #22c55e;
     }
   </style>
 
@@ -71,35 +53,27 @@
 </div>
 
 <script>
-  // =========================
-  // Supabase 설정
-  // =========================
-  const SUPABASE_URL = 'https://uwzerhiqdaqhtncyghoy.supabase.co';
-
-  const SUPABASE_KEY =
-    'sb_publishable_jxfgCwlcynf35U1bkIxipw_Kxayi39_';
-
-  const supabase = window.supabase.createClient(
-    SUPABASE_URL,
-    SUPABASE_KEY
-  );
-
-  // =========================
-  // 플레이어 이름 읽기
-  // =========================
-  const params = new URLSearchParams(window.location.search);
+  // 플레이어 이름
+  const params = new URLSearchParams(location.search);
   const player = params.get('player') || 'unknown';
 
   document.getElementById('player').textContent =
     '플레이어: ' + player;
 
-  // =========================
+  // Supabase 연결
+  const SUPABASE_URL = 'https://uwzerhiqdaqhtncyghoy.supabase.co';
+  const SUPABASE_KEY =
+    'sb_publishable_jxfgCwlcynf35U1bkIxipw_Kxayi39_';
+
+  const client = supabase.createClient(
+    SUPABASE_URL,
+    SUPABASE_KEY
+  );
+
   // 마이크 시작
-  // =========================
   async function startMicrophone() {
 
     try {
-
       const stream = await navigator.mediaDevices.getUserMedia({
         audio: true
       });
@@ -108,8 +82,8 @@
         '마이크 연결 완료';
 
       const audioContext = new AudioContext();
-
       const analyser = audioContext.createAnalyser();
+
       analyser.fftSize = 2048;
 
       const source =
@@ -119,7 +93,7 @@
 
       const data = new Uint8Array(analyser.fftSize);
 
-      // 실시간 측정 (100ms)
+      // 실시간 측정
       setInterval(async () => {
 
         analyser.getByteTimeDomainData(data);
@@ -127,40 +101,24 @@
         let sum = 0;
 
         for (let i = 0; i < data.length; i++) {
-          const value = (data[i] - 128) / 128;
-          sum += value * value;
+          const v = (data[i] - 128) / 128;
+          sum += v * v;
         }
 
         const rms = Math.sqrt(sum / data.length);
 
         let db = 20 * Math.log10(rms);
 
-        // 무음 처리
-        if (!isFinite(db)) {
-          db = -80;
-        }
+        if (!isFinite(db)) db = -80;
 
         db = Number(db.toFixed(1));
 
         // 화면 표시
-        const dbElement = document.getElementById('db');
-        dbElement.textContent = db + ' dB';
+        document.getElementById('db').textContent =
+          db + ' dB';
 
-        // 색상 변경
-        if (db > -12) {
-          dbElement.style.color = '#ef4444';
-        } else if (db > -20) {
-          dbElement.style.color = '#f59e0b';
-        } else {
-          dbElement.style.color = '#22c55e';
-        }
-
-        // =========================
         // Supabase 저장
-        // 테이블: voiceInfo
-        // 컬럼: name, db
-        // =========================
-        const { error } = await supabase
+        const { error } = await client
           .from('voiceInfo')
           .insert({
             name: player,
@@ -168,7 +126,7 @@
           });
 
         if (error) {
-          console.error('Supabase 오류:', error);
+          console.error(error);
         }
 
       }, 100);
@@ -178,13 +136,10 @@
       console.error(err);
 
       document.getElementById('status').textContent =
-        '마이크 권한이 거부되었거나 사용할 수 없습니다.';
-
-      alert('마이크 권한을 허용해주세요.');
+        '마이크 권한을 허용해주세요.';
     }
   }
 
-  // 시작
   startMicrophone();
 </script>
 
