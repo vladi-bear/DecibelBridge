@@ -17,6 +17,7 @@ body {
     align-items: center;
     height: 100vh;
 }
+
 .card {
     background: rgba(17,24,39,0.85);
     padding: 40px;
@@ -25,22 +26,56 @@ body {
     width: 400px;
     backdrop-filter: blur(5px);
 }
+
 #db {
     font-size: 70px;
     color: #22c55e;
     font-weight: bold;
     margin: 20px;
 }
+
+#notice {
+    font-size: 14px;
+    line-height: 1.6;
+    color: #d1d5db;
+    margin: 20px 0;
+}
+
+#startButton {
+    background: #22c55e;
+    color: white;
+    border: none;
+    padding: 12px 24px;
+    border-radius: 10px;
+    cursor: pointer;
+    font-size: 16px;
+}
+
+#startButton:hover {
+    opacity: 0.8;
+}
 </style>
 </head>
-
 <body>
 
 <div class="card">
     <h1>🎤 DecibelBridge</h1>
     <div id="player"></div>
     <div id="db">0.0dB</div>
-    <div id="status">마이크 권한을 요청할게요. 절대 녹음하지 않고 dB(데시벨)만 측정합니다!</div>
+
+    <div id="notice">
+        마이크 권한을 요청합니다.<br>
+        음성을 녹음하거나 저장하지 않으며,<br>
+        데시벨(dB) 측정값만 사용합니다.
+    </div>
+
+    <button id="startButton">
+        마이크 활성화
+    </button>
+
+    <div id="status">
+        마이크 권한 요청 대기 중...
+    </div>
 </div>
 
 <script>
@@ -51,35 +86,40 @@ const NOISE_GATE = 48.5;
 const params = new URLSearchParams(location.search);
 const playerName = params.get("player") || "unknown";
 
-document.getElementById("player").textContent =
-    "플레이어: " + playerName;
+const playerElement = document.getElementById("player");
+const dbElement = document.getElementById("db");
+const statusElement = document.getElementById("status");
+const startButton = document.getElementById("startButton");
+const noticeElement = document.getElementById("notice");
+
+playerElement.textContent = "플레이어: " + playerName;
 
 const socket = new WebSocket(SERVER_URL);
 
 socket.onopen = () => {
-    document.getElementById("status").textContent = "서버 연결 완료";
+    statusElement.textContent = "서버 연결 완료";
     console.log("DecibelBridge WebSocket 연결 성공");
 };
 
 socket.onerror = (error) => {
-    document.getElementById("status").textContent = "서버 연결 실패";
+    statusElement.textContent = "서버 연결 실패";
     console.error("WebSocket 오류", error);
 };
 
 socket.onclose = () => {
-    console.log("DecibelBridge 연결 종료");
+    console.log("DecibelBridge WebSocket 종료");
 };
 
 async function startMicrophone() {
-
     try {
-
         const stream = await navigator.mediaDevices.getUserMedia({
             audio: true
         });
 
-        document.getElementById("status").textContent =
-            "마이크 연결 완료";
+        statusElement.textContent = "마이크 연결 완료";
+
+        startButton.style.display = "none";
+        noticeElement.style.display = "none";
 
         const audioContext = new AudioContext();
         const analyser = audioContext.createAnalyser();
@@ -93,16 +133,13 @@ async function startMicrophone() {
         const dbHistory = [];
 
         setInterval(() => {
-
             analyser.getByteTimeDomainData(data);
 
             let sum = 0;
 
             for (let i = 0; i < data.length; i++) {
-
                 const value = (data[i] - 128) / 128;
                 sum += value * value;
-
             }
 
             let db = 20 * Math.log10(
@@ -116,15 +153,11 @@ async function startMicrophone() {
             let gameDb = (db + 80) * 1.25;
 
             if (gameDb < NOISE_GATE) {
-
                 gameDb = 0;
-
             } else {
-
                 gameDb =
                     ((gameDb - NOISE_GATE) /
                     (100 - NOISE_GATE)) * 100;
-
             }
 
             gameDb = Math.max(0, Math.min(100, gameDb));
@@ -145,52 +178,38 @@ async function startMicrophone() {
 
             const displayDb = averageDb.toFixed(1);
 
-            const dbElement = document.getElementById("db");
-
-            dbElement.textContent =
-                displayDb + "dB";
+            dbElement.textContent = displayDb + "dB";
 
             if (averageDb < 30) {
-
                 dbElement.style.color = "#22c55e";
-
             } else if (averageDb < 60) {
-
                 dbElement.style.color = "#eab308";
-
             } else if (averageDb < 80) {
-
                 dbElement.style.color = "#f97316";
-
             } else {
-
                 dbElement.style.color = "#ef4444";
-
             }
 
             if (socket.readyState === WebSocket.OPEN) {
-
                 socket.send(JSON.stringify({
                     player: playerName,
                     db: Number(displayDb)
                 }));
-
             }
 
         }, 100);
 
     } catch (error) {
-
         console.error(error);
 
-        document.getElementById("status").textContent =
-            "마이크 권한을 허용해주세요.";
-
+        statusElement.textContent =
+            "마이크 권한이 필요합니다.";
     }
-
 }
 
-startMicrophone();
+startButton.addEventListener("click", () => {
+    startMicrophone();
+});
 
 </script>
 
