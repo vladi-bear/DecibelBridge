@@ -44,6 +44,8 @@ body{
 <script>
 const SERVER_URL="wss://skins-reggae-consequences-requirements.trycloudflare.com";
 
+const CALIBRATION=0;
+
 const params=new URLSearchParams(location.search);
 const playerName=params.get("player")||"unknown";
 
@@ -87,8 +89,6 @@ async function startMicrophone(){
 
 		let dbHistory=[];
 
-		const calibration=-10;
-
 		setInterval(()=>{
 
 			analyser.getByteTimeDomainData(data);
@@ -110,7 +110,7 @@ async function startMicrophone(){
 				db=-80;
 			}
 
-			db+=calibration;
+			db+=CALIBRATION;
 
 			dbHistory.push(db);
 
@@ -126,21 +126,17 @@ async function startMicrophone(){
 
 			averageDb/=dbHistory.length;
 
-			if(averageDb<0){
-				averageDb=0;
-			}
-
 			let displayDb=averageDb.toFixed(1);
 
 			document.getElementById("db").textContent=displayDb+"dB";
 
-			if(averageDb<=48){
+			if(averageDb<48.1){
 				document.getElementById("db").style.color="#22c55e";
 			}
-			else if(averageDb<=68){
+			else if(averageDb<68.1){
 				document.getElementById("db").style.color="#eab308";
 			}
-			else if(averageDb<=80){
+			else if(averageDb<80.1){
 				document.getElementById("db").style.color="#f97316";
 			}
 			else{
