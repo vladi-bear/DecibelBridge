@@ -2,7 +2,7 @@
 <html lang="ko">
 <head>
 <meta charset="UTF-8">
-<title>DecibelBridge</title>
+<title>VoiceDB</title>
 <style>
 body{
 	margin:0;
@@ -35,9 +35,9 @@ body{
 </head>
 <body>
 <div class="card">
-<h1>🎤 DecibelBridge</h1>
+<h1>🎤 VoiceDB</h1>
 <div id="player"></div>
-<div id="db">0</div>
+<div id="db">0.0dB</div>
 <div id="status">마이크 권한 요청 중...</div>
 </div>
 
@@ -85,6 +85,10 @@ async function startMicrophone(){
 
 		const data=new Uint8Array(analyser.fftSize);
 
+		let dbHistory=[];
+
+		const calibration=-10;
+
 		setInterval(()=>{
 
 			analyser.getByteTimeDomainData(data);
@@ -106,43 +110,50 @@ async function startMicrophone(){
 				db=-80;
 			}
 
-			let volume=((db+80)/80)*100;
-			
-			if(volume<0){
-				volume=0;
+			db+=calibration;
+
+			dbHistory.push(db);
+
+			if(dbHistory.length>10){
+				dbHistory.shift();
 			}
-			
-			if(volume>100){
-				volume=100;
+
+			let averageDb=0;
+
+			for(let i=0;i<dbHistory.length;i++){
+				averageDb+=dbHistory[i];
 			}
-			
-			volume=Math.round(volume*10)/10;
-			
-			const dbElement=document.getElementById("db");
-			
-			dbElement.textContent=volume.toFixed(1)+"dB";
-			
-			
-			if(volume<=48.0){
-				dbElement.style.color="#22c55e";
+
+			averageDb/=dbHistory.length;
+
+			if(averageDb<0){
+				averageDb=0;
 			}
-			else if(volume<=68.0){
-				dbElement.style.color="#eab308";
+
+			let displayDb=averageDb.toFixed(1);
+
+			document.getElementById("db").textContent=displayDb+"dB";
+
+			if(averageDb<=48){
+				document.getElementById("db").style.color="#22c55e";
 			}
-			else if(volume<=80.0){
-				dbElement.style.color="#f97316";
+			else if(averageDb<=68){
+				document.getElementById("db").style.color="#eab308";
+			}
+			else if(averageDb<=80){
+				document.getElementById("db").style.color="#f97316";
 			}
 			else{
-				dbElement.style.color="#ef4444";
+				document.getElementById("db").style.color="#ef4444";
 			}
-			
+
 			if(socket.readyState===WebSocket.OPEN){
-			
+
 				socket.send(JSON.stringify({
 					player:playerName,
-					db:volume
+					db:Number(displayDb)
 				}));
-			
+
 			}
 
 		},100);
