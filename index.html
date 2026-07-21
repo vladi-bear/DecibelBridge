@@ -3,47 +3,18 @@
 <html lang="ko">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>VoiceDB</title>
-
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-
 <style>
-body{
-  margin:0;
-  background:#0f172a;
-  color:white;
-  font-family:sans-serif;
-  display:flex;
-  justify-content:center;
-  align-items:center;
-  min-height:100vh;
-}
-.card{
-  background:#111827;
-  padding:40px;
-  border-radius:20px;
-  text-align:center;
-  width:90%;
-  max-width:500px;
-}
-#db{
-  font-size:72px;
-  font-weight:bold;
-  color:#22c55e;
-  margin:20px 0;
-}
+body{background:#111;color:white;font-family:sans-serif;text-align:center;margin-top:100px}
+#db{font-size:72px;color:#00ff88}
 </style>
-
 </head>
 <body>
 
-<div class="card">
-  <h1>🎤 VoiceDB</h1>
-  <div id="player">플레이어: 로딩중...</div>
-  <div id="db">-- dB</div>
-  <div id="status">마이크 권한을 요청하는 중...</div>
-</div>
+<h1>🎤 VoiceDB</h1>
+<div id="player"></div>
+<div id="db">-- dB</div>
 
 <script>
 const params = new URLSearchParams(location.search);
@@ -52,80 +23,60 @@ const player = params.get('player') || 'unknown';
 document.getElementById('player').textContent =
   '플레이어: ' + player;
 
-// CDN이 만든 전역 객체를 다른 이름으로 받기
-const sb = window.supabase;
-
-// 클라이언트 생성
-const client = sb.createClient(
+// 여기엔 supabase 변수를 선언하지 않는다
+const client = window.supabase.createClient(
   'https://uwzerhiqdaqhtncyghoy.supabase.co',
   'sb_publishable_jxfgCwlcynf35U1bkIxipw_Kxayi39_'
 );
 
-async function startMicrophone() {
-  try {
-    const stream = await navigator.mediaDevices.getUserMedia({
-      audio: true
-    });
+async function start() {
 
-    document.getElementById('status').textContent =
-      '마이크 연결 완료';
+  const stream = await navigator.mediaDevices.getUserMedia({
+    audio: true
+  });
 
-    const audioContext = new AudioContext();
-    const analyser = audioContext.createAnalyser();
-    analyser.fftSize = 2048;
+  const ctx = new AudioContext();
+  const analyser = ctx.createAnalyser();
+  analyser.fftSize = 2048;
 
-    const source =
-      audioContext.createMediaStreamSource(stream);
+  const source = ctx.createMediaStreamSource(stream);
+  source.connect(analyser);
 
-    source.connect(analyser);
+  const data = new Uint8Array(analyser.fftSize);
 
-    const data = new Uint8Array(analyser.fftSize);
+  setInterval(async () => {
 
-    setInterval(async () => {
+    analyser.getByteTimeDomainData(data);
 
-      analyser.getByteTimeDomainData(data);
+    let sum = 0;
 
-      let sum = 0;
+    for (let i = 0; i < data.length; i++) {
+      const v = (data[i] - 128) / 128;
+      sum += v * v;
+    }
 
-      for (let i = 0; i < data.length; i++) {
-        const v = (data[i] - 128) / 128;
-        sum += v * v;
-      }
+    const rms = Math.sqrt(sum / data.length);
 
-      const rms = Math.sqrt(sum / data.length);
+    let db = 20 * Math.log10(rms);
 
-      let db = 20 * Math.log10(rms);
+    if (!isFinite(db)) db = -80;
 
-      if (!isFinite(db)) db = -80;
+    db = Number(db.toFixed(1));
 
-      db = Number(db.toFixed(1));
+    document.getElementById('db').textContent =
+      db + ' dB';
 
-      document.getElementById('db').textContent =
-        db + ' dB';
+    await client
+      .from('voiceInfo')
+      .insert({
+        name: player,
+        db: db
+      });
 
-      const { error } = await client
-        .from('voiceInfo')
-        .insert({
-          name: player,
-          db: db
-        });
-
-      if (error) {
-        console.error(error);
-      }
-
-    }, 100);
-
-  } catch (err) {
-
-    console.error(err);
-
-    document.getElementById('status').textContent =
-      '마이크 권한을 허용해주세요.';
-  }
+  }, 100);
 }
 
-startMicrophone();
+start().catch(console.error);
 </script>
 
 </body>
