@@ -52,7 +52,11 @@ const player = params.get('player') || 'unknown';
 document.getElementById('player').textContent =
   '플레이어: ' + player;
 
-const client = supabase.createClient(
+// CDN이 만든 전역 객체를 다른 이름으로 받기
+const sb = window.supabase;
+
+// 클라이언트 생성
+const client = sb.createClient(
   'https://uwzerhiqdaqhtncyghoy.supabase.co',
   'sb_publishable_jxfgCwlcynf35U1bkIxipw_Kxayi39_'
 );
