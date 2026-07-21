@@ -2,145 +2,126 @@
 
 <html lang="ko">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>VoiceDB</title>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>VoiceDB</title>
 
-  <!-- Supabase -->
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 
-  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-
-  <style>
-    body {
-      margin: 0;
-      background: #0f172a;
-      color: white;
-      font-family: sans-serif;
-      display: flex;
-      justify-content: center;
-      align-items: center;
-      min-height: 100vh;
-    }
-
-    .card {
-      background: #111827;
-      padding: 40px;
-      border-radius: 20px;
-      text-align: center;
-      width: 90%;
-      max-width: 500px;
-    }
-
-    #db {
-      font-size: 72px;
-      font-weight: bold;
-      margin: 20px 0;
-      color: #22c55e;
-    }
-  </style>
+<style>
+body{
+  margin:0;
+  background:#0f172a;
+  color:white;
+  font-family:sans-serif;
+  display:flex;
+  justify-content:center;
+  align-items:center;
+  min-height:100vh;
+}
+.card{
+  background:#111827;
+  padding:40px;
+  border-radius:20px;
+  text-align:center;
+  width:90%;
+  max-width:500px;
+}
+#db{
+  font-size:72px;
+  font-weight:bold;
+  color:#22c55e;
+  margin:20px 0;
+}
+</style>
 
 </head>
 <body>
 
 <div class="card">
   <h1>🎤 VoiceDB</h1>
-
   <div id="player">플레이어: 로딩중...</div>
-
   <div id="db">-- dB</div>
-
   <div id="status">마이크 권한을 요청하는 중...</div>
 </div>
 
 <script>
-  // 플레이어 이름
-  const params = new URLSearchParams(location.search);
-  const player = params.get('player') || 'unknown';
+const params = new URLSearchParams(location.search);
+const player = params.get('player') || 'unknown';
 
-  document.getElementById('player').textContent =
-    '플레이어: ' + player;
+document.getElementById('player').textContent =
+  '플레이어: ' + player;
 
-  // Supabase 연결
-  const SUPABASE_URL = 'https://uwzerhiqdaqhtncyghoy.supabase.co';
-  const SUPABASE_KEY =
-    'sb_publishable_jxfgCwlcynf35U1bkIxipw_Kxayi39_';
+const client = supabase.createClient(
+  'https://uwzerhiqdaqhtncyghoy.supabase.co',
+  'sb_publishable_jxfgCwlcynf35U1bkIxipw_Kxayi39_'
+);
 
-  const client = supabase.createClient(
-    SUPABASE_URL,
-    SUPABASE_KEY
-  );
+async function startMicrophone() {
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({
+      audio: true
+    });
 
-  // 마이크 시작
-  async function startMicrophone() {
+    document.getElementById('status').textContent =
+      '마이크 연결 완료';
 
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({
-        audio: true
-      });
+    const audioContext = new AudioContext();
+    const analyser = audioContext.createAnalyser();
+    analyser.fftSize = 2048;
 
-      document.getElementById('status').textContent =
-        '마이크 연결 완료';
+    const source =
+      audioContext.createMediaStreamSource(stream);
 
-      const audioContext = new AudioContext();
-      const analyser = audioContext.createAnalyser();
+    source.connect(analyser);
 
-      analyser.fftSize = 2048;
+    const data = new Uint8Array(analyser.fftSize);
 
-      const source =
-        audioContext.createMediaStreamSource(stream);
+    setInterval(async () => {
 
-      source.connect(analyser);
+      analyser.getByteTimeDomainData(data);
 
-      const data = new Uint8Array(analyser.fftSize);
+      let sum = 0;
 
-      // 실시간 측정
-      setInterval(async () => {
+      for (let i = 0; i < data.length; i++) {
+        const v = (data[i] - 128) / 128;
+        sum += v * v;
+      }
 
-        analyser.getByteTimeDomainData(data);
+      const rms = Math.sqrt(sum / data.length);
 
-        let sum = 0;
+      let db = 20 * Math.log10(rms);
 
-        for (let i = 0; i < data.length; i++) {
-          const v = (data[i] - 128) / 128;
-          sum += v * v;
-        }
+      if (!isFinite(db)) db = -80;
 
-        const rms = Math.sqrt(sum / data.length);
+      db = Number(db.toFixed(1));
 
-        let db = 20 * Math.log10(rms);
+      document.getElementById('db').textContent =
+        db + ' dB';
 
-        if (!isFinite(db)) db = -80;
+      const { error } = await client
+        .from('voiceInfo')
+        .insert({
+          name: player,
+          db: db
+        });
 
-        db = Number(db.toFixed(1));
+      if (error) {
+        console.error(error);
+      }
 
-        // 화면 표시
-        document.getElementById('db').textContent =
-          db + ' dB';
+    }, 100);
 
-        // Supabase 저장
-        const { error } = await client
-          .from('voiceInfo')
-          .insert({
-            name: player,
-            db: db
-          });
+  } catch (err) {
 
-        if (error) {
-          console.error(error);
-        }
+    console.error(err);
 
-      }, 100);
-
-    } catch (err) {
-
-      console.error(err);
-
-      document.getElementById('status').textContent =
-        '마이크 권한을 허용해주세요.';
-    }
+    document.getElementById('status').textContent =
+      '마이크 권한을 허용해주세요.';
   }
+}
 
-  startMicrophone();
+startMicrophone();
 </script>
 
 </body>
