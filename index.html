@@ -64,9 +64,9 @@ body {
     <div id="db">0.0dB</div>
 
     <div id="notice">
-        마이크 권한을 요청합니다.<br>
-        음성을 녹음하거나 저장하지 않으며,<br>
-        데시벨(dB) 측정값만 사용합니다.
+        마이크 권한을 요청할게요!<br>
+        절대! 음성을 녹음하거나 저장하지 않으며,<br>
+        데시벨(dB) 측정값만 사용합니다!
     </div>
 
     <button id="startButton">
@@ -92,7 +92,7 @@ const statusElement = document.getElementById("status");
 const startButton = document.getElementById("startButton");
 const noticeElement = document.getElementById("notice");
 
-playerElement.textContent = "플레이어: " + playerName;
+playerElement.textContent = "플레이어 : [" + playerName" + "]";
 
 const socket = new WebSocket(SERVER_URL);
 
