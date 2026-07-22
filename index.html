@@ -1,264 +1,374 @@
 <!DOCTYPE html>
+
 <html lang="ko">
 <head>
 <meta charset="UTF-8">
 <title>DecibelBridge</title>
+
 <style>
-body {
-    margin: 0;
-    background-image: url("background.jpg");
-    background-size: cover;
-    background-position: center;
-    background-repeat: no-repeat;
-    color: white;
-    font-family: sans-serif;
-    display: flex;
-    justify-content: center;
-    align-items: center;
-    height: 100vh;
+
+body{
+    margin:0;
+    background-image:url("background.jpg");
+    background-size:cover;
+    background-position:center;
+    background-repeat:no-repeat;
+    color:white;
+    font-family:sans-serif;
+    display:flex;
+    justify-content:center;
+    align-items:center;
+    height:100vh;
 }
 
-.card {
-    background: rgba(17,24,39,0.85);
-    padding: 40px;
-    border-radius: 20px;
-    text-align: center;
-    width: 400px;
-    backdrop-filter: blur(5px);
+#serverPanel{
+    position:fixed;
+    top:20px;
+    right:20px;
+    display:flex;
+    gap:10px;
+    background:rgba(17,24,39,0.92);
+    padding:12px;
+    border-radius:12px;
+    backdrop-filter:blur(5px);
 }
 
-#db {
-    font-size: 70px;
-    color: #22c55e;
-    font-weight: bold;
-    margin: 20px;
+#serverInput{
+    width:260px;
+    padding:10px;
+    border:none;
+    border-radius:8px;
+    background:rgba(255,255,255,0.1);
+    color:white;
 }
 
-#notice {
-    font-size: 14px;
-    line-height: 1.6;
-    color: #d1d5db;
-    margin: 20px 0;
+#serverInput::placeholder{
+    color:#9ca3af;
 }
 
-#startButton {
-    background: #22c55e;
-    color: white;
-    border: none;
-    padding: 12px 24px;
-    border-radius: 10px;
-    cursor: pointer;
-    font-size: 16px;
+#connectButton{
+    background:#3b82f6;
+    color:white;
+    border:none;
+    padding:10px 16px;
+    border-radius:8px;
+    cursor:pointer;
 }
 
-#startButton:hover {
-    opacity: 0.8;
+#connectButton:hover{
+    opacity:0.85;
 }
+
+.card{
+    background:rgba(17,24,39,0.85);
+    padding:40px;
+    border-radius:20px;
+    text-align:center;
+    width:400px;
+    backdrop-filter:blur(5px);
+}
+
+#db{
+    font-size:70px;
+    color:#22c55e;
+    font-weight:bold;
+    margin:20px;
+}
+
+#notice{
+    font-size:14px;
+    line-height:1.6;
+    color:#d1d5db;
+    margin:20px 0;
+}
+
+#startButton{
+    background:#22c55e;
+    color:white;
+    border:none;
+    padding:12px 24px;
+    border-radius:10px;
+    cursor:pointer;
+    font-size:16px;
+}
+
+#startButton:hover{
+    opacity:0.8;
+}
+
+#startButton:disabled{
+    opacity:0.4;
+    cursor:not-allowed;
+}
+
 </style>
+
 </head>
 
 <body>
 
+<div id="serverPanel">
+    <input id="serverInput" type="text" placeholder="example.trycloudflare.com">
+    <button id="connectButton">연결</button>
+</div>
+
 <div class="card">
-    <h1>🎤 DecibelBridge</h1>
-    <div id="player"></div>
-    <div id="db">0.0dB</div>
 
-    <div id="notice">
-        마이크 권한을 요청할게요!<br>
-        절대! 음성을 녹음하거나 저장하지 않으며,<br>
-        데시벨(dB) 측정값만 사용합니다!
-    </div>
+```
+<h1>🎤 DecibelBridge</h1>
 
-    <button id="startButton">
-        마이크 활성화
-    </button>
+<div id="player"></div>
 
-    <div id="status">
-        마이크 권한 요청 대기 중...
-    </div>
+<div id="db">0.0dB</div>
+
+<div id="notice">
+
+    마이크 권한을 요청할게요!<br>
+
+    절대! 음성을 녹음하거나 저장하지 않으며,<br>
+
+    dB(데시벨)와 Pitch(음높이) 같은 분석 결과값만 사용합니다!
+
+</div>
+
+<button id="startButton" disabled>
+
+    마이크 활성화
+
+</button>
+
+<div id="status">
+
+    서버 주소를 입력하고 연결해주세요.
+
+</div>
+```
+
 </div>
 
 <script>
 
-const SERVER_URL = "wss://journalist-gene-sources-lions.trycloudflare.com";
-const NOISE_GATE = 48.5;
+const NOISE_GATE=48.5;
 
-const params = new URLSearchParams(location.search);
-const playerName = params.get("player") || "unknown";
+const params=new URLSearchParams(location.search);
 
-const playerElement = document.getElementById("player");
-const dbElement = document.getElementById("db");
-const statusElement = document.getElementById("status");
-const startButton = document.getElementById("startButton");
-const noticeElement = document.getElementById("notice");
+const playerName=params.get("player")||"unknown";
 
-let socket = null;
+const playerElement=document.getElementById("player");
+const dbElement=document.getElementById("db");
+const statusElement=document.getElementById("status");
+const startButton=document.getElementById("startButton");
+const noticeElement=document.getElementById("notice");
 
-playerElement.textContent = "플레이어 : [" + playerName + "]";
+const serverInput=document.getElementById("serverInput");
+const connectButton=document.getElementById("connectButton");
 
-async function startMicrophone() {
+let socket=null;
+let wsUrl=null;
 
-    try {
-
-        socket = new WebSocket(SERVER_URL);
-
-        socket.onopen = () => {
-            console.log("DecibelBridge WebSocket 연결 성공");
-            statusElement.textContent = "서버 연결 완료";
-        };
-
-        socket.onerror = (error) => {
-            console.error("WebSocket 오류", error);
-        };
-
-        socket.onclose = () => {
-            console.log("DecibelBridge WebSocket 종료");
-        };
+playerElement.textContent="플레이어 : ["+playerName+"]";
 
 
-        const stream = await navigator.mediaDevices.getUserMedia({
-            audio: true
+const savedAddress=localStorage.getItem("decibelbridge_server");
+
+if(savedAddress){
+
+    serverInput.value=savedAddress;
+
+}
+
+
+function normalizeAddress(input){
+
+    let address=input.trim();
+
+    address=address.replace(/^wss?:\\/\\//,"");
+
+    return "wss://"+address;
+
+}
+
+
+function connectServer(){
+
+    const address=serverInput.value.trim();
+
+    if(!address){
+
+        alert("서버 주소를 입력해주세요!");
+
+        return;
+
+    }
+
+    localStorage.setItem("decibelbridge_server",address);
+
+    wsUrl=normalizeAddress(address);
+
+    statusElement.textContent="서버 연결 중...";
+
+    connectButton.disabled=true;
+
+    socket=new WebSocket(wsUrl);
+
+    socket.onopen=()=>{
+
+        console.log("DecibelBridge WebSocket 연결 성공");
+
+        statusElement.textContent="서버 연결 완료";
+
+        startButton.disabled=false;
+
+    };
+
+    socket.onerror=(error)=>{
+
+        console.error("WebSocket 오류",error);
+
+        statusElement.textContent="서버 연결 실패";
+
+        connectButton.disabled=false;
+
+    };
+
+    socket.onclose=()=>{
+
+        console.log("DecibelBridge WebSocket 종료");
+
+        statusElement.textContent="서버 연결 종료";
+
+        connectButton.disabled=false;
+
+        startButton.disabled=true;
+
+    };
+
+}
+
+
+async function startMicrophone(){
+
+    try{
+
+        const stream=await navigator.mediaDevices.getUserMedia({
+            audio:true
         });
 
+        statusElement.textContent="마이크 연결 완료";
 
-        statusElement.textContent =
-            "마이크 연결 완료";
+        startButton.style.display="none";
+        noticeElement.style.display="none";
 
+        const audioContext=new AudioContext();
+        const analyser=audioContext.createAnalyser();
 
-        startButton.style.display = "none";
-        noticeElement.style.display = "none";
+        analyser.fftSize=2048;
 
+        const source=audioContext.createMediaStreamSource(stream);
 
-        const audioContext = new AudioContext();
-        const analyser = audioContext.createAnalyser();
-
-        analyser.fftSize = 2048;
-
-
-        const source = audioContext.createMediaStreamSource(stream);
         source.connect(analyser);
 
+        const data=new Uint8Array(analyser.fftSize);
 
-        const data = new Uint8Array(analyser.fftSize);
-        const dbHistory = [];
+        const dbHistory=[];
 
-
-        setInterval(() => {
+        setInterval(()=>{
 
             analyser.getByteTimeDomainData(data);
 
+            let sum=0;
 
-            let sum = 0;
+            for(let i=0;i<data.length;i++){
 
+                const value=(data[i]-128)/128;
 
-            for (let i = 0; i < data.length; i++) {
-
-                const value = (data[i] - 128) / 128;
-                sum += value * value;
+                sum+=value*value;
 
             }
 
-
-            let db = 20 * Math.log10(
-                Math.sqrt(sum / data.length)
+            let db=20*Math.log10(
+                Math.sqrt(sum/data.length)
             );
 
+            if(!Number.isFinite(db)){
 
-            if (!Number.isFinite(db)) {
-
-                db = -80;
-
-            }
-
-
-            let gameDb = (db + 80) * 1.25;
-
-
-            if (gameDb < NOISE_GATE) {
-
-                gameDb = 0;
-
-            } else {
-
-                gameDb =
-                    ((gameDb - NOISE_GATE) /
-                    (100 - NOISE_GATE)) * 100;
+                db=-80;
 
             }
 
+            let gameDb=(db+80)*1.25;
 
-            gameDb = Math.max(0, Math.min(100, gameDb));
+            if(gameDb<NOISE_GATE){
 
+                gameDb=0;
+
+            }else{
+
+                gameDb=
+                    ((gameDb-NOISE_GATE)/
+                    (100-NOISE_GATE))*100;
+
+            }
+
+            gameDb=Math.max(0,Math.min(100,gameDb));
 
             dbHistory.push(gameDb);
 
-
-            if (dbHistory.length > 5) {
+            if(dbHistory.length>5){
 
                 dbHistory.shift();
 
             }
 
+            let averageDb=0;
 
-            let averageDb = 0;
+            for(const value of dbHistory){
 
-
-            for (const value of dbHistory) {
-
-                averageDb += value;
+                averageDb+=value;
 
             }
 
+            averageDb/=dbHistory.length;
 
-            averageDb /= dbHistory.length;
+            const displayDb=averageDb.toFixed(1);
 
+            dbElement.textContent=displayDb+"dB";
 
-            const displayDb = averageDb.toFixed(1);
+            if(averageDb<30){
 
+                dbElement.style.color="#22c55e";
 
-            dbElement.textContent =
-                displayDb + "dB";
+            }else if(averageDb<60){
 
+                dbElement.style.color="#eab308";
 
-            if (averageDb < 30) {
+            }else if(averageDb<80){
 
-                dbElement.style.color = "#22c55e";
+                dbElement.style.color="#f97316";
 
-            } else if (averageDb < 60) {
+            }else{
 
-                dbElement.style.color = "#eab308";
-
-            } else if (averageDb < 80) {
-
-                dbElement.style.color = "#f97316";
-
-            } else {
-
-                dbElement.style.color = "#ef4444";
+                dbElement.style.color="#ef4444";
 
             }
 
-
-            if (socket != null &&
-                socket.readyState === WebSocket.OPEN) {
+            if(socket!=null&&
+                socket.readyState===WebSocket.OPEN){
 
                 socket.send(JSON.stringify({
-                    player: playerName,
-                    db: Number(displayDb)
+                    player:playerName,
+                    db:Number(displayDb)
                 }));
 
             }
 
+        },100);
 
-        }, 100);
-
-
-    } catch (error) {
+    }catch(error){
 
         console.error(error);
 
-        statusElement.textContent =
+        statusElement.textContent=
             "마이크 권한이 필요합니다.";
 
     }
@@ -266,8 +376,18 @@ async function startMicrophone() {
 }
 
 
-startButton.addEventListener("click", () => {
-    startMicrophone();
+connectButton.addEventListener("click",connectServer);
+
+startButton.addEventListener("click",startMicrophone);
+
+serverInput.addEventListener("keydown",e=>{
+
+    if(e.key==="Enter"){
+
+        connectServer();
+
+    }
+
 });
 
 </script>
