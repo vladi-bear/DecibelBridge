@@ -123,9 +123,9 @@ body{
 
 <div id="notice">
 
-    마이크 권한을 요청할게요!<br>
+    마이크 권한을 요청할게요<br>
 
-    절대! 음성을 녹음하거나 저장하지 않으며,<br>
+    절대! 음성을 녹음하거나 저장하지 않으며<br>
 
     dB(데시벨)와 Pitch(음높이) 같은 분석 결과값만 사용합니다!
 
@@ -182,7 +182,7 @@ function normalizeAddress(input){
 
     let address=input.trim();
 
-    address=address.replace(/^wss?:\\/\\//,"");
+    address=address.replace(/^wss?:\/\//,"");
 
     return "wss://"+address;
 
